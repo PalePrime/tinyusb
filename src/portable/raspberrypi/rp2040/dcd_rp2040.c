@@ -78,8 +78,11 @@ static void _hw_endpoint_alloc(struct hw_endpoint *ep, uint8_t transfer_type)
     size *= 2u;
   }
 
-  ep->hw_data_buf = next_buffer_ptr;
-  next_buffer_ptr += size;
+  if (!ep->hw_data_buf) {
+    // allocate if clean, othewise reuse same buffer space
+    ep->hw_data_buf = next_buffer_ptr;
+    next_buffer_ptr += size;
+  }
 
   assert(((uintptr_t )next_buffer_ptr & 0b111111u) == 0);
   uint dpram_offset = hw_data_offset(ep->hw_data_buf);
@@ -100,10 +103,17 @@ static void _hw_endpoint_close(struct hw_endpoint *ep)
     *ep->endpoint_control = 0;
     // Clears buffer available, etc
     *ep->buffer_control = 0;
-    // Clear any endpoint state
+    // Clear any endpoint state, but save DPRAM pointer for reuse
+    uint8_t *save_hw_data_buf = ep->hw_data_buf;
     memset(ep, 0, sizeof(struct hw_endpoint));
+    ep->hw_data_buf = save_hw_data_buf;
 
     // Reclaim buffer space if all endpoints are closed
+    // Need to do much better, for UAC2 EP:s are dynamically
+    // opened and closed, could be clever and use an allocation vector
+    // For now, just realize that this is much more static than it seems
+    // and reuse DPRAM on a per EP basis
+    /*
     bool reclaim_buffers = true;
     for ( uint8_t i = 1; i < USB_MAX_ENDPOINTS; i++ )
     {
@@ -117,6 +127,7 @@ static void _hw_endpoint_close(struct hw_endpoint *ep)
     {
         next_buffer_ptr = &usb_dpram->epx_data[0];
     }
+    */
 }
 
 static void hw_endpoint_close(uint8_t ep_addr)
